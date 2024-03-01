@@ -1,17 +1,198 @@
 ---
-title: "Untitled"
-author: "Me"
+title: "Colorful Melodies: Exploring the Colors of Music"
+author: "Yuyue Xiao"
 
 output: 
   flexdashboard::flex_dashboard:
     storyboard: true
+    theme:
+      version: 4
+      bg: "#101010"
+      fg: "#FDF7F7" 
+      primary: "#ED79F9"
+      navbar-bg: "#3ADAC6"
+      base_font: 
+        google: Prompt
+      heading_font:
+        google: Sen
+      code_font:
+        google: 
+          # arguments to sass::font_google() 
+          family: JetBrains Mono
+          local: false
 ---
 
-### My first tab
+### Self Similarity Matrices
 
-```{r}
+```{r, echo = FALSE, message = FALSE, bg = 'transparent', fig.width=10, fig.height=6}
 library(tidyverse)
-ggplot() + geom_function(fun = sin)
+library(spotifyr)
+library(compmus)
+# Function to create self similarity matrix plot
+create_similarity_plot <- function(track_id, title) {
+  # Load audio analysis data
+  audio_data <- get_tidy_audio_analysis(track_id) %>%
+    compmus_align(bars, segments) %>%
+    select(bars) %>%
+    unnest(bars) %>%
+    mutate(
+      pitches = map(segments,
+                     compmus_summarise, pitches,
+                     method = "acentre", norm = "manhattan"),
+      timbre = map(segments,
+                   compmus_summarise, timbre,
+                   method = "mean")
+    )
+
+  # Create self similarity matrices for Chroma and Timbre
+  chroma_matrix <- audio_data %>%
+    compmus_self_similarity(pitches, "aitchison") %>%
+    mutate(d = d / max(d), type = "Chroma")
+
+  timbre_matrix <- audio_data %>%
+    compmus_self_similarity(timbre, "cosine") %>%
+    mutate(d = d / max(d), type = "Timbre")
+
+  # Plot self similarity matrices
+  plot_chroma <- ggplot(
+      chroma_matrix,
+      aes(
+        x = xstart + xduration / 2,
+        width = xduration,
+        y = ystart + yduration / 2,
+        height = yduration,
+        fill = d
+      )
+    ) +
+    geom_tile() +
+    coord_fixed() +
+    scale_fill_viridis_c(guide = "none") +
+    theme_classic() +
+    theme(
+      panel.background = element_rect(fill = "transparent", color = NA),
+      plot.background = element_rect(fill = "transparent", color = NA)
+    ) +
+    labs(x = "", y = "") +
+    ggtitle(paste0("Chroma Self Similarity Matrix - ", title))
+
+  plot_timbre <- ggplot(
+      timbre_matrix,
+      aes(
+        x = xstart + xduration / 2,
+        width = xduration,
+        y = ystart + yduration / 2,
+        height = yduration,
+        fill = d
+      )
+    ) +
+    geom_tile() +
+    coord_fixed() +
+    scale_fill_viridis_c(guide = "none") +
+    theme_classic() +
+    theme(
+      panel.background = element_rect(fill = "transparent", color = NA),
+      plot.background = element_rect(fill = "transparent", color = NA)
+    ) +
+    labs(x = "", y = "") +
+    ggtitle(paste0("Timbre Self Similarity Matrix - ", title))
+
+  # Return list of plots
+  list(plot_chroma, plot_timbre)
+}
+
+# Track IDs and titles
+tracks <- list(
+  c("6fr1g7TqyLtZC3WqSKovcb", "Blue"),
+  c("7kfAbcKnRajKOmuACF3dxl", "Black")
+)
+theme_set(theme(panel.background = element_rect(fill = "transparent")))
+
+# Create plots for each track
+plots <- lapply(tracks, function(track) {
+  create_similarity_plot(track[1], track[2])
+})
+
+# Display plots in a grid layout
+library(gridExtra)
+
+
+grid.arrange(plots[[1]][[1]], plots[[1]][[2]], plots[[2]][[1]], plots[[2]][[2]], 
+             ncol = 2, nrow = 2)
+
 ```
 
-### Chart A
+***
+I've compared two songs from the blue and black categories by analyzing their self-similarity matrices. The first song displays greater overall similarity in melodies and timbre. It shows a clearer structure with distinct segments throughout the track. Notably, the chroma and timbre graphs have similar patterns, indicating that changes in harmony and timbre often occur simultaneously. Conversely, the second song contains smaller segments, making it more challenging to distinguish between them. Additionally, the chroma and timbre matrices depict different patterns, suggesting there are different ways to divide the music from different aspects.It is worth noted that the pattern shows here does not represent the whole category.
+
+### Valence-Energy graph
+```{r}
+pink <- get_playlist_audio_features("", "2OZ42DxmlNZUua113zuz1A")
+blue <- get_playlist_audio_features("", "0wtw9NQFVy2zMQxZ8BAe5T")
+black <- get_playlist_audio_features("", "36pH6ey9uoMBnZDj4pAXyv")
+white <- get_playlist_audio_features("", "0SqwX4Y54AjbnXsha6QU4I")
+```
+```{r}
+my_data <-
+  bind_rows(
+    pink |> mutate(category = "Pink"),
+    black |> mutate(category = "Black"),
+    blue |> mutate(category = "Blue"),
+    white |> mutate(category = "White")
+  )
+```
+
+```{r}
+library(gridExtra)
+library(ggplot2)
+theme_set(theme(panel.background = element_rect(fill = "transparent")))
+# 创建四个ggplot对象
+pink_plot <- ggplot(pink, aes(x = valence, y = energy)) +
+  geom_point() + geom_smooth() +
+  coord_cartesian(xlim = c(0,0.8), ylim = c(0, 1)) +
+  ggtitle("Pink") +
+  theme(plot.title = element_text(hjust = 0.5))
+black_plot <- ggplot(black, aes(x = valence, y = energy)) +
+  geom_jitter() + geom_smooth() +
+  coord_cartesian(xlim = c(0,0.8), ylim = c(0, 1)) +
+  ggtitle("Black") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+blue_plot <- ggplot(blue, aes(x = valence, y = energy)) +
+  geom_jitter() + geom_smooth() +
+  coord_cartesian(xlim = c(0,0.8), ylim = c(0, 1)) +
+  ggtitle("Blue") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+white_plot <- ggplot(white, aes(x = valence, y = energy)) +
+  geom_jitter() + geom_smooth() +
+  coord_cartesian(xlim = c(0,0.8), ylim = c(0, 1)) +
+  ggtitle("White") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# 将ggplot对象转换为grob对象
+pink_grob <- ggplotGrob(pink_plot)
+black_grob <- ggplotGrob(black_plot)
+blue_grob <- ggplotGrob(blue_plot)
+white_grob <- ggplotGrob(white_plot)
+
+# 将图形以四宫格的方式排列
+grid.arrange(pink_grob, black_grob, blue_grob, white_grob, ncol = 2, nrow = 2,widths = c(0.5, 0.5), heights = c(0.5, 0.5))
+
+```
+
+
+***
+From this graph we can see that the pink category has a combination of sounds with high energy and low valence, or high valence with relatively low energy. The black category has high energy, with valence spread out the scale, but mainly at a low level. The blue category has medium - high energy with medium valence. The white category has medium energy and low valence.
+
+
+### Introduction page
+
+The corpus I selected is a pool of music tracks i used for DJ sets previously, mainly include deep/ambient techno music. My main interest is to explore the relationship between the design and color themes of the music album covers and the content of the music itself. I chose this topic because I believe that the organic character of this music genre and inspiration from nature would often evoke particular imagery or emotions, which is tightly linked with colors. Additionally a few of the artists are also visual artists, so their album cover designs should strongly align with the music content. I hypothesize that bright and clear color themes on album covers would correspond to brighter music, while darker and more ambiguous cover themes may align with deeper and lower-frequency music. 
+
+I categorized the music tracks in four categories :  black, white, blue and pink,  with 30 tracks in each category. One of the typical examples from the selected soundtracks include the 2022 album "Bloom" and the 2023 album "Groundwork." One album features cover art primarily composed of highly saturated paintings, while the other consists of a purely black abstract geometric design. These two albums also exhibit significant differences in listening experience.
+
+
+![Alt Text 1](images/black.png){width=275 height=150} ![Alt Text 2](images/blue.png){width=275 height=150} ![Alt Text 3](images/pink.png){width=275 height=150} ![Alt Text 4](images/white.png){width=275 height=150}
+
+
+
