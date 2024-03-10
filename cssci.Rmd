@@ -1,0 +1,85 @@
+---
+title: "cssci"
+output: html_document
+date: "2024-03-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r}
+# 加载所需的库
+library(spotifyr)
+
+# 函数：从Spotify API获取歌单中所有歌曲的音频特征
+get_playlist_audio_features <- function(playlist_id) {
+  # 获取歌单中所有歌曲的音频特征数据
+  playlist_tracks <- get_playlist_tracks(playlist_id)
+  track_ids <- playlist_tracks$track.id
+  
+  # 初始化一个列表来存储音频特征数据
+  playlist_features <- list()
+  
+  # 循环遍历每首歌曲，获取音频特征数据
+  for (track_id in track_ids) {
+    audio_features <- get_track_audio_features(track_id)
+    playlist_features[[track_id]] <- audio_features
+  }
+  
+  # 返回歌曲音频特征数据
+  return(playlist_features)
+}
+# 函数：从歌曲音频特征数据中获取音调范围
+get_key_range <- function(audio_features) {
+  # 获取歌曲中的所有音调
+  keys <- audio_features$key
+  
+  # 计算音调范围
+  key_range <- max(keys) - min(keys)
+  
+  # 返回音调范围
+  return(key_range)
+}
+
+# 函数：将歌曲音频特征数据转换为数据框
+convert_to_dataframe <- function(playlist_features) {
+  # 创建空数据框
+  df <- data.frame()
+  
+  # 遍历每首歌曲的音频特征数据，添加到数据框
+  for (track_id in names(playlist_features)) {
+    track_features <- playlist_features[[track_id]]
+    df <- rbind(df, track_features)
+  }
+  
+  # 计算音调范围并添加到数据框
+  df$key_range <- sapply(playlist_features, get_key_range)
+  
+  # 返回数据框
+  return(df)
+}
+
+
+# 主函数
+main <- function() {
+  # 设置歌单ID
+  playlist_id <- "3IffFPtDlfYa0n4vYWBvuB"
+  
+  # 获取歌单中所有歌曲的音频特征
+  playlist_features <- get_playlist_audio_features(playlist_id)
+  
+  # 将音频特征数据转换为数据框
+  playlist_df <- convert_to_dataframe(playlist_features)
+  
+  # 将数据框保存到CSV文件
+  write.csv(playlist_df, file = "spotify_playlist_features.csv", row.names = FALSE)
+}
+
+# 运行主函数
+main()
+
+```
+

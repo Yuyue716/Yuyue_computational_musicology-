@@ -21,6 +21,235 @@ output:
           family: JetBrains Mono
           local: false
 ---
+### Key histgram
+
+```{r,echo = FALSE}
+library(tidyverse)
+library(spotifyr)
+library(compmus)
+black <-
+  get_playlist_audio_features(
+    "",
+    "36pH6ey9uoMBnZDj4pAXyv"
+  ) |>
+  add_audio_analysis()
+pink <-
+  get_playlist_audio_features(
+    "",
+    "2OZ42DxmlNZUua113zuz1A"
+  ) |>
+  add_audio_analysis()
+blue <-
+  get_playlist_audio_features(
+    "",
+    "0wtw9NQFVy2zMQxZ8BAe5T"
+  ) |>
+  add_audio_analysis()
+white <-
+  get_playlist_audio_features(
+    "",
+    "0SqwX4Y54AjbnXsha6QU4I"
+  ) |>
+  add_audio_analysis()
+my_data <- 
+  bind_rows(
+    black |> mutate(genre = "Black"),
+    pink |> mutate(genre = "Pink"),
+    blue |> mutate(genre = "Blue"),
+    white |> mutate(genre = "White")
+  )
+```
+
+
+```{r,echo = FALSE}
+
+# Function to convert numeric key to music key
+# Define function to convert numeric key to music key
+convert_to_music_key <- function(key_numeric) {
+  # Define a vector of music keys
+  music_keys <- c("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+  
+  # Calculate the index of the music key based on the numeric key
+  index <- (key_numeric %% 12) + 1
+  
+  # Return the corresponding music key
+  return(music_keys[index])
+}
+
+# Convert numeric key to music key
+my_data$music_key <- sapply(my_data$key, convert_to_music_key)
+
+# Plot histogram of keys with music keys on x-axis
+# Plot histogram of keys with music keys on x-axis
+ggplot(my_data,aes(x = factor(music_key, levels = c("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")), fill = factor(mode), group = mode)) +
+  geom_bar(data = subset(my_data, mode == 1 & playlist_name == "new_blue"), aes(y = ..count..), binwidth = 1, color = "black", fill = "blue", stat = "count") +
+  geom_bar(data = subset(my_data, mode == 0 & playlist_name == "new_blue"), aes(y = ..count..), binwidth = 1, color = "black", fill = "lightblue", stat = "count") +
+  geom_bar(data = subset(my_data, mode == 1 & playlist_name == "new_pink"), aes(y = ..count..), binwidth = 1, color = "black", fill = "#FF69B4", stat = "count") +
+  geom_bar(data = subset(my_data, mode == 0 & playlist_name == "new_pink"), aes(y = ..count..), binwidth = 1, color = "black", fill = "#FFB6C1", stat = "count") +
+  geom_bar(data = subset(my_data, mode == 1 & playlist_name == "new_black"), aes(y = ..count..), binwidth = 1, color = "black", fill = "black", stat = "count") +
+  geom_bar(data = subset(my_data, mode == 0 & playlist_name == "new_black"), aes(y = ..count..), binwidth = 1, color = "black", fill = "grey", stat = "count") +
+  geom_bar(data = subset(my_data, mode == 1 & playlist_name == "new_white"), aes(y = ..count..), binwidth = 1, color = "black", fill = "#FFFFD0", stat = "count") +
+  geom_bar(data = subset(my_data, mode == 0 & playlist_name == "new_white"), aes(y = ..count..), binwidth = 1, color = "black", fill = "white", stat = "count") +
+  labs(title = "Histogram of Keys by Key Type", x = "Music Key", y = "Frequency", fill = "Key Type") +
+  facet_wrap(~ playlist_name, ncol = 2) +  # Separate histograms by playlist_id
+  theme_minimal()
+
+```
+
+***
+I compared the distribution of keys within the four categories, where the darker color represents the major key and the lighter color represents the minor key. There are more major keys in pink and blue playlists compared to the black and white ones, which might contribute to a higher valence or positive emotional tone. G major is one of the most common keys among the four categories, which differs from most other music genres where C major is the most common. This suggests that there is generally more variety in the sharp and flat pitch classes in my corpus. In the white corpus, there are significantly more C# keys, indicating greater complexity and richness in the music, as the C# key has seven sharps.
+
+### Chordograms
+
+```{r}
+circshift <- function(v, n) {
+  if (n == 0) v else c(tail(v, n), head(v, -n))
+}
+
+#      C     C#    D     Eb    E     F     F#    G     Ab    A     Bb    B
+major_chord <-
+  c(   1,    0,    0,    0,    1,    0,    0,    1,    0,    0,    0,    0)
+minor_chord <-
+  c(   1,    0,    0,    1,    0,    0,    0,    1,    0,    0,    0,    0)
+seventh_chord <-
+  c(   1,    0,    0,    0,    1,    0,    0,    1,    0,    0,    1,    0)
+
+major_key <-
+  c(6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88)
+minor_key <-
+  c(6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17)
+
+chord_templates <-
+  tribble(
+    ~name, ~template,
+    "Gb:7", circshift(seventh_chord, 6),
+    "Gb:maj", circshift(major_chord, 6),
+    "Bb:min", circshift(minor_chord, 10),
+    "Db:maj", circshift(major_chord, 1),
+    "F:min", circshift(minor_chord, 5),
+    "Ab:7", circshift(seventh_chord, 8),
+    "Ab:maj", circshift(major_chord, 8),
+    "C:min", circshift(minor_chord, 0),
+    "Eb:7", circshift(seventh_chord, 3),
+    "Eb:maj", circshift(major_chord, 3),
+    "G:min", circshift(minor_chord, 7),
+    "Bb:7", circshift(seventh_chord, 10),
+    "Bb:maj", circshift(major_chord, 10),
+    "D:min", circshift(minor_chord, 2),
+    "F:7", circshift(seventh_chord, 5),
+    "F:maj", circshift(major_chord, 5),
+    "A:min", circshift(minor_chord, 9),
+    "C:7", circshift(seventh_chord, 0),
+    "C:maj", circshift(major_chord, 0),
+    "E:min", circshift(minor_chord, 4),
+    "G:7", circshift(seventh_chord, 7),
+    "G:maj", circshift(major_chord, 7),
+    "B:min", circshift(minor_chord, 11),
+    "D:7", circshift(seventh_chord, 2),
+    "D:maj", circshift(major_chord, 2),
+    "F#:min", circshift(minor_chord, 6),
+    "A:7", circshift(seventh_chord, 9),
+    "A:maj", circshift(major_chord, 9),
+    "C#:min", circshift(minor_chord, 1),
+    "E:7", circshift(seventh_chord, 4),
+    "E:maj", circshift(major_chord, 4),
+    "G#:min", circshift(minor_chord, 8),
+    "B:7", circshift(seventh_chord, 11),
+    "B:maj", circshift(major_chord, 11),
+    "D#:min", circshift(minor_chord, 3)
+  )
+
+key_templates <-
+  tribble(
+    ~name, ~template,
+    "Gb:maj", circshift(major_key, 6),
+    "Bb:min", circshift(minor_key, 10),
+    "Db:maj", circshift(major_key, 1),
+    "F:min", circshift(minor_key, 5),
+    "Ab:maj", circshift(major_key, 8),
+    "C:min", circshift(minor_key, 0),
+    "Eb:maj", circshift(major_key, 3),
+    "G:min", circshift(minor_key, 7),
+    "Bb:maj", circshift(major_key, 10),
+    "D:min", circshift(minor_key, 2),
+    "F:maj", circshift(major_key, 5),
+    "A:min", circshift(minor_key, 9),
+    "C:maj", circshift(major_key, 0),
+    "E:min", circshift(minor_key, 4),
+    "G:maj", circshift(major_key, 7),
+    "B:min", circshift(minor_key, 11),
+    "D:maj", circshift(major_key, 2),
+    "F#:min", circshift(minor_key, 6),
+    "A:maj", circshift(major_key, 9),
+    "C#:min", circshift(minor_key, 1),
+    "E:maj", circshift(major_key, 4),
+    "G#:min", circshift(minor_key, 8),
+    "B:maj", circshift(major_key, 11),
+    "D#:min", circshift(minor_key, 3)
+  )
+```
+
+```{r}
+library(gridExtra)
+
+sample1 <- get_tidy_audio_analysis("0aNMDYhIWGr0f5yjP6QkUk") %>%
+  compmus_align(bars, segments) %>%
+  select(bars) %>%
+  unnest(bars) %>%
+  mutate(
+    pitches = map(segments,
+                   compmus_summarise, pitches,
+                   method = "mean", norm = "manhattan")
+  )
+
+plot1 <- sample1 %>%
+  compmus_match_pitch_template(
+    chord_templates,         # Change to chord_templates if described
+    method = "euclidean",  # Try different distance metrics
+    norm = "manhattan"     # Try different norms
+  ) %>%
+  ggplot(
+    aes(x = start + duration / 2, width = duration, y = name, fill = d)
+  ) +
+  geom_tile() +
+  scale_fill_viridis_c(guide = "none") +
+  theme_minimal() +
+  labs(x = "Time (s)", y = "") +
+  theme(axis.text.y = element_text(size = 5))
+
+sample2 <- get_tidy_audio_analysis("5HyHcVDIdda1M2SsAPVszp") %>%
+  compmus_align(bars, segments) %>%
+  select(bars) %>%
+  unnest(bars) %>%
+  mutate(
+    pitches = map(segments,
+                  compmus_summarise, pitches,
+                  method = "mean", norm = "manhattan")
+  )
+
+plot2 <- sample2 %>%
+  compmus_match_pitch_template(
+    chord_templates,         # Change to chord_templates if described
+    method = "euclidean",  # Try different distance metrics
+    norm = "manhattan"     # Try different norms
+  ) %>%
+  ggplot(
+    aes(x = start + duration / 2, width = duration, y = name, fill = d)
+  ) +
+  geom_tile() +
+  scale_fill_viridis_c(guide = "none") +
+  theme_minimal() +
+  labs(x = "Time (s)", y = "") +
+  theme(axis.text.y = element_text(size = 5))
+
+# 绘制两个图上下排列
+grid.arrange(plot1, plot2, ncol = 1)
+
+```
+
+***
+In the chordograms I've compared two songs from the white and pink categories. The first one have a stable pattern where different chords appears at the same time. The second songs shows more variety and circular changes in chord progression. 
+
 
 ### Self Similarity Matrices
 
@@ -125,21 +354,7 @@ grid.arrange(plots[[1]][[1]], plots[[1]][[2]], plots[[2]][[1]], plots[[2]][[2]],
 I've compared two songs from the blue and black categories by analyzing their self-similarity matrices. The first song displays greater overall similarity in melodies and timbre. It shows a clearer structure with distinct segments throughout the track. Notably, the chroma and timbre graphs have similar patterns, indicating that changes in harmony and timbre often occur simultaneously. Conversely, the second song contains smaller segments, making it more challenging to distinguish between them. Additionally, the chroma and timbre matrices depict different patterns, suggesting there are different ways to divide the music from different aspects.It is worth noted that the pattern shows here does not represent the whole category.
 
 ### Valence-Energy graph
-```{r}
-pink <- get_playlist_audio_features("", "2OZ42DxmlNZUua113zuz1A")
-blue <- get_playlist_audio_features("", "0wtw9NQFVy2zMQxZ8BAe5T")
-black <- get_playlist_audio_features("", "36pH6ey9uoMBnZDj4pAXyv")
-white <- get_playlist_audio_features("", "0SqwX4Y54AjbnXsha6QU4I")
-```
-```{r}
-my_data <-
-  bind_rows(
-    pink |> mutate(category = "Pink"),
-    black |> mutate(category = "Black"),
-    blue |> mutate(category = "Blue"),
-    white |> mutate(category = "White")
-  )
-```
+
 
 ```{r}
 library(gridExtra)
