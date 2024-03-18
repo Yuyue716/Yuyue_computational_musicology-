@@ -21,9 +21,80 @@ output:
           family: JetBrains Mono
           local: false
 ---
+
+```{r}
+library(tidyverse)
+library(spotifyr)
+library(compmus)
+```
+### Tempograms
+
+```{r}
+graveola <- get_tidy_audio_analysis("1lLB0JErnXsekz6uMcAkiH")
+```
+
+```{r}
+graveola |>
+  tempogram(window_size = 8, hop_size = 5, cyclic = TRUE) |>
+  ggplot(aes(x = time, y = bpm, fill = power)) +
+  geom_raster() +
+  scale_fill_viridis_c(guide = "none") +
+  labs(x = "Time (s)", y = "Tempo (BPM)") +
+  theme_classic()
+```
+
+***
+I analyzed the tempogram for one track in the blue corpus. From the graph we can see that the tempo predominantly  centers at 120, but there is one segment where tempo cannot be detected clearly. That is because there is a rhythmic change, and the percussion is relatively weak. 
+
+### Tempo histgram
+```{r,echo = FALSE}
+library(ggplot2)
+library(gridExtra)
+
+# Read playlist data from CSV file
+playlist_data <- read.csv("spotify_playlist_features.csv", header = TRUE)
+color_palette <- c("pink", "blue","black", "white")
+# Function to plot tempo histogram for a playlist
+plot_playlist_tempo_histogram <- function(playlist_name, playlist_data, xlim_range) {
+  # Extract tempo values for the specified playlist name
+  tempo_values <- playlist_data$tempo[playlist_data$playlist_name == playlist_name]
+  
+  # Create histogram with fixed x-axis range
+  ggplot(data.frame(tempo = tempo_values), aes(x = tempo, fill = playlist_name)) +
+    geom_histogram(binwidth = 5, fill = color_palette[playlist_name == unique(playlist_data$playlist_name)]) +
+    labs(title = playlist_name,
+         x = "Tempo (BPM)", y = "Frequency") +
+    xlim(xlim_range)
+}
+
+# Get maximum and minimum tempo values across all playlists
+max_tempo <- max(playlist_data$tempo)
+min_tempo <- min(playlist_data$tempo)
+
+# Define the common x-axis range
+xlim_range <- c(min_tempo, max_tempo)
+
+# Create empty list to store histograms
+histograms <- list()
+
+# Plot tempo histograms for each unique playlist name
+unique_playlists <- unique(playlist_data$playlist_name)
+for (playlist_name in unique_playlists) {
+  histograms[[playlist_name]] <- plot_playlist_tempo_histogram(playlist_name, playlist_data, xlim_range)
+}
+
+# Arrange histograms on one page
+grid.arrange(grobs = histograms, nrow = 2, ncol = 2)
+
+```
+
+***
+The tempo histograms reveal that the tempo across all four corpora tends to center around 120 bpm. However, the distribution of the "blue" corpus appears to be more scattered compared to the others, indicating a greater variability in tempo within that corpus.
+
 ### Key histgram
 
-```{r,echo = FALSE}
+
+```{r}
 library(tidyverse)
 library(spotifyr)
 library(compmus)
