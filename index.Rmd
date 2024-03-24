@@ -26,7 +26,143 @@ output:
 library(tidyverse)
 library(spotifyr)
 library(compmus)
+library(recipes)
+library(rsample)
+library(heatmaply)
+library(tidymodels)
+library(ggdendro)
+library(parsnip)
+library(workflows)
+library(yardstick)
+library(rsample)
+library(workflows)
+library(kknn)
+library(yardstick)
+
+get_conf_mat <- function(fit) {
+  outcome <- .get_tune_outcome_names(fit)
+  fit |> 
+    collect_predictions() |> 
+    conf_mat(truth = outcome, estimate = .pred_class)
+}  
+
+get_pr <- function(fit) {
+  fit |> 
+    conf_mat_resampled() |> 
+    group_by(Prediction) |> mutate(precision = Freq / sum(Freq)) |> 
+    group_by(Truth) |> mutate(recall = Freq / sum(Freq)) |> 
+    ungroup() |> filter(Prediction == Truth) |> 
+    select(class = Prediction, precision, recall)
+}  
+
 ```
+
+### Classification
+
+```{r}
+black <- get_playlist_audio_features("spotify", "36pH6ey9uoMBnZDj4pAXyv")
+blue <- get_playlist_audio_features("spotify", "0wtw9NQFVy2zMQxZ8BAe5T")
+pink <- get_playlist_audio_features("spotify", "2OZ42DxmlNZUua113zuz1A")
+white <- get_playlist_audio_features("spotify", "0SqwX4Y54AjbnXsha6QU4I")
+music <-
+  bind_rows(
+    black |> mutate(playlist = "Black"),
+    blue |> mutate(playlist = "Blue") ,
+    pink |> mutate(playlist = "Pink"),
+    white |> mutate(playlist = "White")
+  ) |> 
+  add_audio_analysis()
+```
+
+```{r}
+music_features <-
+  music |>  
+  mutate(
+    playlist = factor(playlist),
+    segments = map2(segments, key, compmus_c_transpose),
+    pitches =
+      map(
+        segments,
+        compmus_summarise, pitches,
+        method = "mean", norm = "manhattan"
+      ),
+    timbre =
+      map(
+        segments,
+        compmus_summarise, timbre,
+        method = "mean",
+      )
+  ) |>
+  mutate(pitches = map(pitches, compmus_normalise, "clr")) |>
+  mutate_at(vars(pitches, timbre), map, bind_rows) |>
+  unnest(cols = c(pitches, timbre))
+```
+
+
+
+```{r}
+music_recipe <- 
+  recipe(
+    playlist ~
+      danceability +
+      energy +
+      loudness +
+      speechiness +
+      acousticness +
+      instrumentalness +
+      liveness +
+      valence +
+      tempo +
+      mode + 
+      key +
+      duration +
+      C + `C#|Db` + D + `D#|Eb` +
+      E + `F` + `F#|Gb` + G +
+      `G#|Ab` + A + `A#|Bb` + B +
+      c01 + c02 + c03 + c04 + c05 + c06 +
+      c07 + c08 + c09 + c10 + c11 + c12,
+    data = music_features
+  ) %>%
+  step_center(all_predictors()) %>%# Converts to z-scores.
+  step_scale(all_predictors())# Sets range to [0, 1].
+```
+
+```{r}
+music_cv <- music_features |> vfold_cv(5)
+```
+
+
+```{r}
+knn_model <-
+  nearest_neighbor(neighbors = 1) |>
+  set_mode("classification") |> 
+  set_engine("kknn")
+music_knn <- 
+  workflow() |> 
+  add_recipe(music_recipe) |> 
+  add_model(knn_model) |> 
+  fit_resamples(music_cv, control = control_resamples(save_pred = TRUE))
+```
+
+```{r}
+music_knn |> get_conf_mat() |> autoplot(type = "heatmap")
+```
+
+```{r,echo = FALSE}
+# Calculate accuracy
+accuracy <- music_knn %>%
+  collect_predictions() %>%
+  metrics(truth = playlist, estimate = .pred_class) %>%
+  filter(.metric == "accuracy") %>%
+  pull(.estimate)
+
+# Print the accuracy
+print(accuracy)
+
+```
+***
+I applied a classifier to distinguish the four playlists with different music ablum color. With a k-nearest neighbour classifier,  we can see that the classifier is relatively more effective at identifying music in a white color album, and it has very low performance when identifying blue album. However the overall accuracy is only 20%, which means the probability of accurate prediction is lower than chance. It implies that either there is no clear difference in music with different color albums, or the differences can't be identified from spotify api features.
+
 ### Tempograms
 
 ```{r}
@@ -94,44 +230,6 @@ The tempo histograms reveal that the tempo across all four corpora tends to cent
 ### Key histgram
 
 
-```{r}
-library(tidyverse)
-library(spotifyr)
-library(compmus)
-black <-
-  get_playlist_audio_features(
-    "",
-    "36pH6ey9uoMBnZDj4pAXyv"
-  ) |>
-  add_audio_analysis()
-pink <-
-  get_playlist_audio_features(
-    "",
-    "2OZ42DxmlNZUua113zuz1A"
-  ) |>
-  add_audio_analysis()
-blue <-
-  get_playlist_audio_features(
-    "",
-    "0wtw9NQFVy2zMQxZ8BAe5T"
-  ) |>
-  add_audio_analysis()
-white <-
-  get_playlist_audio_features(
-    "",
-    "0SqwX4Y54AjbnXsha6QU4I"
-  ) |>
-  add_audio_analysis()
-my_data <- 
-  bind_rows(
-    black |> mutate(genre = "Black"),
-    pink |> mutate(genre = "Pink"),
-    blue |> mutate(genre = "Blue"),
-    white |> mutate(genre = "White")
-  )
-```
-
-
 ```{r,echo = FALSE}
 
 # Function to convert numeric key to music key
@@ -148,19 +246,19 @@ convert_to_music_key <- function(key_numeric) {
 }
 
 # Convert numeric key to music key
-my_data$music_key <- sapply(my_data$key, convert_to_music_key)
+music$music_key <- sapply(music$key, convert_to_music_key)
 
 # Plot histogram of keys with music keys on x-axis
 # Plot histogram of keys with music keys on x-axis
-ggplot(my_data,aes(x = factor(music_key, levels = c("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")), fill = factor(mode), group = mode)) +
-  geom_bar(data = subset(my_data, mode == 1 & playlist_name == "new_blue"), aes(y = ..count..), binwidth = 1, color = "black", fill = "blue", stat = "count") +
-  geom_bar(data = subset(my_data, mode == 0 & playlist_name == "new_blue"), aes(y = ..count..), binwidth = 1, color = "black", fill = "lightblue", stat = "count") +
-  geom_bar(data = subset(my_data, mode == 1 & playlist_name == "new_pink"), aes(y = ..count..), binwidth = 1, color = "black", fill = "#FF69B4", stat = "count") +
-  geom_bar(data = subset(my_data, mode == 0 & playlist_name == "new_pink"), aes(y = ..count..), binwidth = 1, color = "black", fill = "#FFB6C1", stat = "count") +
-  geom_bar(data = subset(my_data, mode == 1 & playlist_name == "new_black"), aes(y = ..count..), binwidth = 1, color = "black", fill = "black", stat = "count") +
-  geom_bar(data = subset(my_data, mode == 0 & playlist_name == "new_black"), aes(y = ..count..), binwidth = 1, color = "black", fill = "grey", stat = "count") +
-  geom_bar(data = subset(my_data, mode == 1 & playlist_name == "new_white"), aes(y = ..count..), binwidth = 1, color = "black", fill = "#FFFFD0", stat = "count") +
-  geom_bar(data = subset(my_data, mode == 0 & playlist_name == "new_white"), aes(y = ..count..), binwidth = 1, color = "black", fill = "white", stat = "count") +
+ggplot(music,aes(x = factor(music_key, levels = c("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")), fill = factor(mode), group = mode)) +
+  geom_bar(data = subset(music, mode == 1 & playlist_name == "new_blue"), aes(y = ..count..), binwidth = 1, color = "black", fill = "blue", stat = "count") +
+  geom_bar(data = subset(music, mode == 0 & playlist_name == "new_blue"), aes(y = ..count..), binwidth = 1, color = "black", fill = "lightblue", stat = "count") +
+  geom_bar(data = subset(music, mode == 1 & playlist_name == "new_pink"), aes(y = ..count..), binwidth = 1, color = "black", fill = "#FF69B4", stat = "count") +
+  geom_bar(data = subset(music, mode == 0 & playlist_name == "new_pink"), aes(y = ..count..), binwidth = 1, color = "black", fill = "#FFB6C1", stat = "count") +
+  geom_bar(data = subset(music, mode == 1 & playlist_name == "new_black"), aes(y = ..count..), binwidth = 1, color = "black", fill = "black", stat = "count") +
+  geom_bar(data = subset(music, mode == 0 & playlist_name == "new_black"), aes(y = ..count..), binwidth = 1, color = "black", fill = "grey", stat = "count") +
+  geom_bar(data = subset(music, mode == 1 & playlist_name == "new_white"), aes(y = ..count..), binwidth = 1, color = "black", fill = "#FFFFD0", stat = "count") +
+  geom_bar(data = subset(music, mode == 0 & playlist_name == "new_white"), aes(y = ..count..), binwidth = 1, color = "black", fill = "white", stat = "count") +
   labs(title = "Histogram of Keys by Key Type", x = "Music Key", y = "Frequency", fill = "Key Type") +
   facet_wrap(~ playlist_name, ncol = 2) +  # Separate histograms by playlist_id
   theme_minimal()
