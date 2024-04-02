@@ -57,7 +57,19 @@ get_pr <- function(fit) {
 
 ```
 
-### Classification
+Introduction
+======================
+
+
+The corpus I selected is a pool of music tracks i used for DJ sets previously, mainly include deep/ambient techno music. My main interest is to explore the relationship between the design and color themes of the music album covers and the content of the music itself. I chose this topic because I believe that the organic character of this music genre and inspiration from nature would often evoke particular imagery or emotions, which is tightly linked with colors. Additionally a few of the artists are also visual artists, so their album cover designs should strongly align with the music content. 
+
+I categorized the music tracks in four categories :  [Black](https://open.spotify.com/playlist/36pH6ey9uoMBnZDj4pAXyv?si=22bf965cd83f4544), [White](https://open.spotify.com/playlist/0SqwX4Y54AjbnXsha6QU4I?si=2a0794b0c2594542), [Blue](https://open.spotify.com/playlist/0wtw9NQFVy2zMQxZ8BAe5T?si=3fe2253f1a614bbf) and [Pink](https://open.spotify.com/playlist/2OZ42DxmlNZUua113zuz1A?si=efe207dd11994f21),  with 30 tracks in each category. When selecting songs, I also consider my own auditory perception, which is the idea of whether a song "gives me the vibe of this color." From my own perspective, the songs with black color give me a sense of depth and mystery, reminding me of mountains, forests, and rocks at night. The songs in the blue playlist always remind me of the ocean, in the playlist I selected there are also songs with titles "the sea breathe" and "underwater acoustic." The songs in the pink playlist are brighter and warmer, like the sunset on the horizon or cherry blossoms. The songs in the white playlist give a more ethereal feeling, connecting with an imagined world, such as the songs "transparent creature" and "River words."
+
+Can these subjective and imaginative perceptions can be reflected and identified from quantifiable music features? This is the question that I am most interested in exploring. I hypothesize that bright and clear color themes on album covers would correspond to brighter music, while darker and more ambiguous cover themes may align with deeper and lower-frequency music. However, I am still uncertain about how other features such as rhythm and melody correspond to more abstract perceptions.
+
+![Alt Text 1](images/black.png){width=275 height=150} ![Alt Text 2](images/blue.png){width=275 height=150} ![Alt Text 3](images/pink.png){width=275 height=150} ![Alt Text 4](images/white.png){width=275 height=150}
+
+
 
 ```{r}
 black <- get_playlist_audio_features("spotify", "36pH6ey9uoMBnZDj4pAXyv")
@@ -98,137 +110,511 @@ music_features <-
   unnest(cols = c(pitches, timbre))
 ```
 
+Overview of the audio features {.storyboard}
+======================
 
-
-```{r}
-music_recipe <- 
-  recipe(
-    playlist ~
-      danceability +
-      energy +
-      loudness +
-      speechiness +
-      acousticness +
-      instrumentalness +
-      liveness +
-      valence +
-      tempo +
-      mode + 
-      key +
-      duration +
-      C + `C#|Db` + D + `D#|Eb` +
-      E + `F` + `F#|Gb` + G +
-      `G#|Ab` + A + `A#|Bb` + B +
-      c01 + c02 + c03 + c04 + c05 + c06 +
-      c07 + c08 + c09 + c10 + c11 + c12,
-    data = music_features
-  ) %>%
-  step_center(all_predictors()) %>%# Converts to z-scores.
-  step_scale(all_predictors())# Sets range to [0, 1].
-```
+### Playlist features heatmap
 
 ```{r}
-music_cv <- music_features |> vfold_cv(5)
-```
+# Calculate the average values for each playlist
+playlist_avg <- music %>%
+  group_by(playlist_name) %>%
+  summarize(avg_energy = mean(energy),
+            avg_valence = mean(valence),
+            avg_danceability = mean(danceability),
+            avg_loudness = (mean(loudness) - min(loudness)) / (max(loudness) - min(loudness)))  # Scaling loudness
 
+# Create a long format for the data
+playlist_avg_long <- playlist_avg %>%
+  pivot_longer(cols = starts_with("avg"), names_to = "Attribute", values_to = "Value")
 
-```{r}
-knn_model <-
-  nearest_neighbor(neighbors = 1) |>
-  set_mode("classification") |> 
-  set_engine("kknn")
-music_knn <- 
-  workflow() |> 
-  add_recipe(music_recipe) |> 
-  add_model(knn_model) |> 
-  fit_resamples(music_cv, control = control_resamples(save_pred = TRUE))
-```
+# Create a heatmap
+heatmap <- ggplot(playlist_avg_long, aes(x = playlist_name, y = Attribute, fill = Value)) +
+  geom_tile() +
+  scale_fill_gradient(low = "lightyellow", high = "darkblue") +  # You can adjust the color gradient as needed
+  labs(title = "Playlist Attributes Heatmap",
+       x = "Playlist Name",
+       y = "Attribute") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-```{r}
-music_knn |> get_conf_mat() |> autoplot(type = "heatmap")
-```
-
-```{r,echo = FALSE}
-# Calculate accuracy
-accuracy <- music_knn %>%
-  collect_predictions() %>%
-  metrics(truth = playlist, estimate = .pred_class) %>%
-  filter(.metric == "accuracy") %>%
-  pull(.estimate)
-
-# Print the accuracy
-print(accuracy)
-
-```
-***
-I applied a classifier to distinguish the four playlists with different music ablum color. With a k-nearest neighbour classifier,  we can see that the classifier is relatively more effective at identifying music in a white color album, and it has very low performance when identifying blue album. However the overall accuracy is only 20%, which means the probability of accurate prediction is lower than chance. It implies that either there is no clear difference in music with different color albums, or the differences can't be identified from spotify api features.
-
-### Tempograms
-
-```{r}
-graveola <- get_tidy_audio_analysis("1lLB0JErnXsekz6uMcAkiH")
-```
-
-```{r}
-graveola |>
-  tempogram(window_size = 8, hop_size = 5, cyclic = TRUE) |>
-  ggplot(aes(x = time, y = bpm, fill = power)) +
-  geom_raster() +
-  scale_fill_viridis_c(guide = "none") +
-  labs(x = "Time (s)", y = "Tempo (BPM)") +
-  theme_classic()
+# Print the heatmap
+print(heatmap)
 ```
 
 ***
-I analyzed the tempogram for one track in the blue corpus. From the graph we can see that the tempo predominantly  centers at 120, but there is one segment where tempo cannot be detected clearly. That is because there is a rhythmic change, and the percussion is relatively weak. 
+I created a heatmap with the average value of the different audio features in different playlists. From this graph we can see that the corpus overall has a low valence level and high energy and danceability. The loudness value is been scaled from 0 to 1. The pink playlist has a higher valence and loudness compare to other playlists. The blue playlist has the highest energy value. And the black and white playlist have a relatively high daceability. As the corpus is electornic music, it has very high instrumentalness level and low acousticness level in all four playlists so these attributes are not invovled in this heatmap.
 
-### Tempo histgram
-```{r,echo = FALSE}
+
+### Valence-Energy graph
+
+```{r}
+library(gridExtra)
 library(ggplot2)
+theme_set(theme(panel.background = element_rect(fill = "transparent")))
+# 创建四个ggplot对象
+pink_plot <- ggplot(pink, aes(x = valence, y = energy)) +
+  geom_point() + geom_smooth() +
+  coord_cartesian(xlim = c(0,0.8), ylim = c(0, 1)) +
+  ggtitle("Pink") +
+  theme(plot.title = element_text(hjust = 0.5))
+black_plot <- ggplot(black, aes(x = valence, y = energy)) +
+  geom_jitter() + geom_smooth() +
+  coord_cartesian(xlim = c(0,0.8), ylim = c(0, 1)) +
+  ggtitle("Black") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+blue_plot <- ggplot(blue, aes(x = valence, y = energy)) +
+  geom_jitter() + geom_smooth() +
+  coord_cartesian(xlim = c(0,0.8), ylim = c(0, 1)) +
+  ggtitle("Blue") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+white_plot <- ggplot(white, aes(x = valence, y = energy)) +
+  geom_jitter() + geom_smooth() +
+  coord_cartesian(xlim = c(0,0.8), ylim = c(0, 1)) +
+  ggtitle("White") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# 将ggplot对象转换为grob对象
+pink_grob <- ggplotGrob(pink_plot)
+black_grob <- ggplotGrob(black_plot)
+blue_grob <- ggplotGrob(blue_plot)
+white_grob <- ggplotGrob(white_plot)
+
+# 将图形以四宫格的方式排列
+grid.arrange(pink_grob, black_grob, blue_grob, white_grob, ncol = 2, nrow = 2,widths = c(0.5, 0.5), heights = c(0.5, 0.5))
+
+```
+
+
+
+***
+From this graph we can see that the pink category has a combination of sounds with high energy and low valence, or high valence with relatively low energy. The black category has high energy, with valence spread out the scale, but mainly at a low level. The blue category has medium - high energy with medium valence. The white category has medium energy and low valence.
+
+
+Self Similarity Matrices {.storyboard}
+======================
+
+### Pink
+
+```{r, echo = FALSE, message = FALSE, bg = 'transparent', fig.width=10, fig.height=6}
+library(tidyverse)
+library(spotifyr)
+library(compmus)
+# Function to create self similarity matrix plot
+create_similarity_plot <- function(track_id, title) {
+  # Load audio analysis data
+  audio_data <- get_tidy_audio_analysis(track_id) %>%
+    compmus_align(bars, segments) %>%
+    select(bars) %>%
+    unnest(bars) %>%
+    mutate(
+      pitches = map(segments,
+                     compmus_summarise, pitches,
+                     method = "acentre", norm = "manhattan"),
+      timbre = map(segments,
+                   compmus_summarise, timbre,
+                   method = "mean")
+    )
+
+  # Create self similarity matrices for Chroma and Timbre
+  chroma_matrix <- audio_data %>%
+    compmus_self_similarity(pitches, "aitchison") %>%
+    mutate(d = d / max(d), type = "Chroma")
+
+  timbre_matrix <- audio_data %>%
+    compmus_self_similarity(timbre, "cosine") %>%
+    mutate(d = d / max(d), type = "Timbre")
+
+  # Plot self similarity matrices
+  plot_chroma <- ggplot(
+      chroma_matrix,
+      aes(
+        x = xstart + xduration / 2,
+        width = xduration,
+        y = ystart + yduration / 2,
+        height = yduration,
+        fill = d
+      )
+    ) +
+    geom_tile() +
+    coord_fixed() +
+    scale_fill_viridis_c(guide = "none") +
+    theme_classic() +
+    theme(
+      panel.background = element_rect(fill = "transparent", color = NA),
+      plot.background = element_rect(fill = "transparent", color = NA)
+    ) +
+    labs(x = "", y = "") +
+    ggtitle(paste0("Chroma Self Similarity Matrix - ", title))
+
+  plot_timbre <- ggplot(
+      timbre_matrix,
+      aes(
+        x = xstart + xduration / 2,
+        width = xduration,
+        y = ystart + yduration / 2,
+        height = yduration,
+        fill = d
+      )
+    ) +
+    geom_tile() +
+    coord_fixed() +
+    scale_fill_viridis_c(guide = "none") +
+    theme_classic() +
+    theme(
+      panel.background = element_rect(fill = "transparent", color = NA),
+      plot.background = element_rect(fill = "transparent", color = NA)
+    ) +
+    labs(x = "", y = "") +
+    ggtitle(paste0("Timbre Self Similarity Matrix - ", title))
+
+  # Return list of plots
+  list(plot_chroma, plot_timbre)
+}
+
+# Track IDs and titles
+tracks <- list(
+  c("2gwrqcmWu4qWeaLq5EfsnU", "Sakha - Infinity Remix"),
+  c("1QMltlOuqCutdrl2ofMGrE", "Cirrus Apparition")
+)
+theme_set(theme(panel.background = element_rect(fill = "transparent")))
+
+# Create plots for each track
+plots <- lapply(tracks, function(track) {
+  create_similarity_plot(track[1], track[2])
+})
+
+# Display plots in a grid layout
 library(gridExtra)
 
-# Read playlist data from CSV file
-playlist_data <- read.csv("spotify_playlist_features.csv", header = TRUE)
-color_palette <- c("pink", "blue","black", "white")
-# Function to plot tempo histogram for a playlist
-plot_playlist_tempo_histogram <- function(playlist_name, playlist_data, xlim_range) {
-  # Extract tempo values for the specified playlist name
-  tempo_values <- playlist_data$tempo[playlist_data$playlist_name == playlist_name]
-  
-  # Create histogram with fixed x-axis range
-  ggplot(data.frame(tempo = tempo_values), aes(x = tempo, fill = playlist_name)) +
-    geom_histogram(binwidth = 5, fill = color_palette[playlist_name == unique(playlist_data$playlist_name)]) +
-    labs(title = playlist_name,
-         x = "Tempo (BPM)", y = "Frequency") +
-    xlim(xlim_range)
+
+grid.arrange(plots[[1]][[1]], plots[[1]][[2]], plots[[2]][[1]], plots[[2]][[2]], 
+             ncol = 2, nrow = 2)
+```  
+
+***
+For the pink playlist I created the chroma and timbre self similarity matrix for two songs: "Sakha-Infinity Remix" and "Cirrus Apparition". Overall the pink playlist shows clear structure of music in the self similarity matrix, as most of the matrices have dark checkerboard patterns. There is a main melody going throughout the song and some parts with some variations. For "Sakha" we can see 4 different parts in the track. The change of chroma and timbre are almost at the same time, and there is a fade out in the end.  For "Cirrus Apparition", the chroma is almost the same across the whole song, but from timbre there are two small segement at around 200s and 300s where variation happens.
+
+[Click here to listen to Sakha-Infinity Remix](https://open.spotify.com/track/2gwrqcmWu4qWeaLq5EfsnU?si=dbba6e79772c48b0)<br>
+[Click here to listen to Cirrus Apparition](https://open.spotify.com/track/1QMltlOuqCutdrl2ofMGrE?si=9daf50f2ec0e4fec)
+
+
+### Blue
+
+```{r, echo = FALSE, message = FALSE, bg = 'transparent', fig.width=10, fig.height=6}
+library(tidyverse)
+library(spotifyr)
+library(compmus)
+# Function to create self similarity matrix plot
+create_similarity_plot <- function(track_id, title) {
+  # Load audio analysis data
+  audio_data <- get_tidy_audio_analysis(track_id) %>%
+    compmus_align(bars, segments) %>%
+    select(bars) %>%
+    unnest(bars) %>%
+    mutate(
+      pitches = map(segments,
+                     compmus_summarise, pitches,
+                     method = "acentre", norm = "manhattan"),
+      timbre = map(segments,
+                   compmus_summarise, timbre,
+                   method = "mean")
+    )
+
+  # Create self similarity matrices for Chroma and Timbre
+  chroma_matrix <- audio_data %>%
+    compmus_self_similarity(pitches, "aitchison") %>%
+    mutate(d = d / max(d), type = "Chroma")
+
+  timbre_matrix <- audio_data %>%
+    compmus_self_similarity(timbre, "cosine") %>%
+    mutate(d = d / max(d), type = "Timbre")
+
+  # Plot self similarity matrices
+  plot_chroma <- ggplot(
+      chroma_matrix,
+      aes(
+        x = xstart + xduration / 2,
+        width = xduration,
+        y = ystart + yduration / 2,
+        height = yduration,
+        fill = d
+      )
+    ) +
+    geom_tile() +
+    coord_fixed() +
+    scale_fill_viridis_c(guide = "none") +
+    theme_classic() +
+    theme(
+      panel.background = element_rect(fill = "transparent", color = NA),
+      plot.background = element_rect(fill = "transparent", color = NA)
+    ) +
+    labs(x = "", y = "") +
+    ggtitle(paste0("Chroma Self Similarity Matrix - ", title))
+
+  plot_timbre <- ggplot(
+      timbre_matrix,
+      aes(
+        x = xstart + xduration / 2,
+        width = xduration,
+        y = ystart + yduration / 2,
+        height = yduration,
+        fill = d
+      )
+    ) +
+    geom_tile() +
+    coord_fixed() +
+    scale_fill_viridis_c(guide = "none") +
+    theme_classic() +
+    theme(
+      panel.background = element_rect(fill = "transparent", color = NA),
+      plot.background = element_rect(fill = "transparent", color = NA)
+    ) +
+    labs(x = "", y = "") +
+    ggtitle(paste0("Timbre Self Similarity Matrix - ", title))
+
+  # Return list of plots
+  list(plot_chroma, plot_timbre)
 }
 
-# Get maximum and minimum tempo values across all playlists
-max_tempo <- max(playlist_data$tempo)
-min_tempo <- min(playlist_data$tempo)
+# Track IDs and titles
+tracks <- list(
+  c("6fr1g7TqyLtZC3WqSKovcb", "Underwater Acoustics"),
+  c("4RjYatfHXAZOzRcXJAwMoy", "Cosi Lontano")
+)
+theme_set(theme(panel.background = element_rect(fill = "transparent")))
 
-# Define the common x-axis range
-xlim_range <- c(min_tempo, max_tempo)
+# Create plots for each track
+plots <- lapply(tracks, function(track) {
+  create_similarity_plot(track[1], track[2])
+})
 
-# Create empty list to store histograms
-histograms <- list()
+# Display plots in a grid layout
+library(gridExtra)
 
-# Plot tempo histograms for each unique playlist name
-unique_playlists <- unique(playlist_data$playlist_name)
-for (playlist_name in unique_playlists) {
-  histograms[[playlist_name]] <- plot_playlist_tempo_histogram(playlist_name, playlist_data, xlim_range)
+
+grid.arrange(plots[[1]][[1]], plots[[1]][[2]], plots[[2]][[1]], plots[[2]][[2]], 
+             ncol = 2, nrow = 2)
+```  
+
+***
+For the blue playlist I created the chroma and timbre self similarity matrix for [Underwater Acoustics](https://open.spotify.com/track/6fr1g7TqyLtZC3WqSKovcb?si=518f50afe5b24bd1) and [Cosi Lontano](https://open.spotify.com/track/4RjYatfHXAZOzRcXJAwMoy?si=4b849e86f98b4a05). Overall I can see more difference in the structure of self similarity matrix for different tracks in this playlist. Some songs are more self consistent than the others. The two example I picked are on the two side of the spectrum. "Underwater Acoustics" shows a high similarity across the whole song in both chroma and timbre. It does has some variations in the middle, but the variation parts still maintain a relatively high similarity level to the other parts of the music. "Cosi lontano" on the other hand shows a lot of changes in chroma and timbre among the track. It still sounds very consistent when you listen to it because there is a base percussion remain the same, but there are also different other instruments going on top of that. 
+
+### Black
+
+```{r, echo = FALSE, message = FALSE, bg = 'transparent', fig.width=10, fig.height=6}
+library(tidyverse)
+library(spotifyr)
+library(compmus)
+# Function to create self similarity matrix plot
+create_similarity_plot <- function(track_id, title) {
+  # Load audio analysis data
+  audio_data <- get_tidy_audio_analysis(track_id) %>%
+    compmus_align(bars, segments) %>%
+    select(bars) %>%
+    unnest(bars) %>%
+    mutate(
+      pitches = map(segments,
+                     compmus_summarise, pitches,
+                     method = "acentre", norm = "manhattan"),
+      timbre = map(segments,
+                   compmus_summarise, timbre,
+                   method = "mean")
+    )
+
+  # Create self similarity matrices for Chroma and Timbre
+  chroma_matrix <- audio_data %>%
+    compmus_self_similarity(pitches, "aitchison") %>%
+    mutate(d = d / max(d), type = "Chroma")
+
+  timbre_matrix <- audio_data %>%
+    compmus_self_similarity(timbre, "cosine") %>%
+    mutate(d = d / max(d), type = "Timbre")
+
+  # Plot self similarity matrices
+  plot_chroma <- ggplot(
+      chroma_matrix,
+      aes(
+        x = xstart + xduration / 2,
+        width = xduration,
+        y = ystart + yduration / 2,
+        height = yduration,
+        fill = d
+      )
+    ) +
+    geom_tile() +
+    coord_fixed() +
+    scale_fill_viridis_c(guide = "none") +
+    theme_classic() +
+    theme(
+      panel.background = element_rect(fill = "transparent", color = NA),
+      plot.background = element_rect(fill = "transparent", color = NA)
+    ) +
+    labs(x = "", y = "") +
+    ggtitle(paste0("Chroma Self Similarity Matrix - ", title))
+
+  plot_timbre <- ggplot(
+      timbre_matrix,
+      aes(
+        x = xstart + xduration / 2,
+        width = xduration,
+        y = ystart + yduration / 2,
+        height = yduration,
+        fill = d
+      )
+    ) +
+    geom_tile() +
+    coord_fixed() +
+    scale_fill_viridis_c(guide = "none") +
+    theme_classic() +
+    theme(
+      panel.background = element_rect(fill = "transparent", color = NA),
+      plot.background = element_rect(fill = "transparent", color = NA)
+    ) +
+    labs(x = "", y = "") +
+    ggtitle(paste0("Timbre Self Similarity Matrix - ", title))
+
+  # Return list of plots
+  list(plot_chroma, plot_timbre)
 }
 
-# Arrange histograms on one page
-grid.arrange(grobs = histograms, nrow = 2, ncol = 2)
+# Track IDs and titles
+tracks <- list(
+  c("7kfAbcKnRajKOmuACF3dxl", "Living nowhere with..."),
+  c("3QQDdRMzR8vDLZlJOQqBwx", "Dagaz-Delusional Circuits..")
+)
+theme_set(theme(panel.background = element_rect(fill = "transparent")))
 
+# Create plots for each track
+plots <- lapply(tracks, function(track) {
+  create_similarity_plot(track[1], track[2])
+})
+
+# Display plots in a grid layout
+library(gridExtra)
+
+
+grid.arrange(plots[[1]][[1]], plots[[1]][[2]], plots[[2]][[1]], plots[[2]][[2]], 
+             ncol = 2, nrow = 2)
 ```
 
 ***
-The tempo histograms reveal that the tempo across all four corpora tends to center around 120 bpm. However, the distribution of the "blue" corpus appears to be more scattered compared to the others, indicating a greater variability in tempo within that corpus.
+For the black playlist I created the chroma and timbre self similarity matrix for "Living nowhere with messy pigeons" and "Dagaz-Delusional circuits remix". Overall there are more smaller segments and the changes happens more rapidly in the black playlist compare to the others. "Living nowhere with messy pigeons" is an intro so there are no drum beats. We can see both chroma and timbre varies a lot throughout the track. And there are smaller musical segments. In "Dagaz-Delusional Circuits Remix", we can see three major parts from the checkerboard patterns, but there are also always some smaller variations, represent by the straight light lines.
+
+[Click here to listen to Living nowhere with messy pigeons](https://open.spotify.com/track/7kfAbcKnRajKOmuACF3dxl?si=ea1ec4aa96dc4986)<br>
+[Click here to listen to Dagaz-Delusional circuits remix](https://open.spotify.com/track/3QQDdRMzR8vDLZlJOQqBwx?si=d806dc6d47614b4e)
+
+
+### white
+
+```{r, echo = FALSE, message = FALSE, bg = 'transparent', fig.width=10, fig.height=6}
+library(tidyverse)
+library(spotifyr)
+library(compmus)
+# Function to create self similarity matrix plot
+create_similarity_plot <- function(track_id, title) {
+  # Load audio analysis data
+  audio_data <- get_tidy_audio_analysis(track_id) %>%
+    compmus_align(bars, segments) %>%
+    select(bars) %>%
+    unnest(bars) %>%
+    mutate(
+      pitches = map(segments,
+                     compmus_summarise, pitches,
+                     method = "acentre", norm = "manhattan"),
+      timbre = map(segments,
+                   compmus_summarise, timbre,
+                   method = "mean")
+    )
+
+  # Create self similarity matrices for Chroma and Timbre
+  chroma_matrix <- audio_data %>%
+    compmus_self_similarity(pitches, "aitchison") %>%
+    mutate(d = d / max(d), type = "Chroma")
+
+  timbre_matrix <- audio_data %>%
+    compmus_self_similarity(timbre, "cosine") %>%
+    mutate(d = d / max(d), type = "Timbre")
+
+  # Plot self similarity matrices
+  plot_chroma <- ggplot(
+      chroma_matrix,
+      aes(
+        x = xstart + xduration / 2,
+        width = xduration,
+        y = ystart + yduration / 2,
+        height = yduration,
+        fill = d
+      )
+    ) +
+    geom_tile() +
+    coord_fixed() +
+    scale_fill_viridis_c(guide = "none") +
+    theme_classic() +
+    theme(
+      panel.background = element_rect(fill = "transparent", color = NA),
+      plot.background = element_rect(fill = "transparent", color = NA)
+    ) +
+    labs(x = "", y = "") +
+    ggtitle(paste0("Chroma Self Similarity Matrix - ", title))
+
+  plot_timbre <- ggplot(
+      timbre_matrix,
+      aes(
+        x = xstart + xduration / 2,
+        width = xduration,
+        y = ystart + yduration / 2,
+        height = yduration,
+        fill = d
+      )
+    ) +
+    geom_tile() +
+    coord_fixed() +
+    scale_fill_viridis_c(guide = "none") +
+    theme_classic() +
+    theme(
+      panel.background = element_rect(fill = "transparent", color = NA),
+      plot.background = element_rect(fill = "transparent", color = NA)
+    ) +
+    labs(x = "", y = "") +
+    ggtitle(paste0("Timbre Self Similarity Matrix - ", title))
+
+  # Return list of plots
+  list(plot_chroma, plot_timbre)
+}
+
+# Track IDs and titles
+tracks <- list(
+  c("2ZdufCnwqq7ixB1I053V6q", "Synergy-Jupetto Mix"),
+  c("6sUC7aPsA3Yo6GvuMyeSyt", "River words")
+)
+theme_set(theme(panel.background = element_rect(fill = "transparent")))
+
+# Create plots for each track
+plots <- lapply(tracks, function(track) {
+  create_similarity_plot(track[1], track[2])
+})
+
+# Display plots in a grid layout
+library(gridExtra)
+
+
+grid.arrange(plots[[1]][[1]], plots[[1]][[2]], plots[[2]][[1]], plots[[2]][[2]], 
+             ncol = 2, nrow = 2)
+```
+
+***
+In the similarity matrix for the white album, it shows similar patterns as the black since there are also smaller music segments and a lot of small variations. But it is overall more consistent compare to the black one. In "Synergy-Jupetto Mix" there are a lot of variations in chroma, because the melody was repeat playing with a change in key. The timbre has more gradual changes throughout the track, as we can see a horizontal shift from black to yellow. In "River words", there are more consistency in chroma, but some small variations in timbre. 
+
+[Click here to listen to Synergy-Jupetto Mix](https://open.spotify.com/track/2ZdufCnwqq7ixB1I053V6q?si=0b64db6e75cc4ed0)<br>
+[Click here to listen to River words](https://open.spotify.com/track/6sUC7aPsA3Yo6GvuMyeSyt?si=3f117d2141c348c9)
+
+Key and chord {.storyboard}
+======================
 
 ### Key histgram
-
 
 ```{r,echo = FALSE}
 
@@ -266,7 +652,7 @@ ggplot(music,aes(x = factor(music_key, levels = c("C", "C#", "D", "D#", "E", "F"
 ```
 
 ***
-I compared the distribution of keys within the four categories, where the darker color represents the major key and the lighter color represents the minor key. There are more major keys in pink and blue playlists compared to the black and white ones, which might contribute to a higher valence or positive emotional tone. G major is one of the most common keys among the four categories, which differs from most other music genres where C major is the most common. This suggests that there is generally more variety in the sharp and flat pitch classes in my corpus. In the white corpus, there are significantly more C# keys, indicating greater complexity and richness in the music, as the C# key has seven sharps.
+I compared the distribution of keys within the four categories, where the darker color represents the major key and the lighter color represents the minor key. There are more major keys in pink and blue playlists compared to the black and white ones, which might contribute to a higher valence or positive emotional tone. In the pink playlist, there is a higher variation in keys that the tracks are evenly distributed across different keys. The black playlist on the other hand, shows a more concentrated distribution of keys, particularly centered around G major and B minor. In the white playlist C# is presented much more compare to the other playlists. Overall there are a lot of variety in the sharp and flat pitch classes in my corpus, but this cannot be directly associate with the complexity or the valence of the music.
 
 ### Chordograms
 
@@ -380,6 +766,7 @@ plot1 <- sample1 %>%
   ggplot(
     aes(x = start + duration / 2, width = duration, y = name, fill = d)
   ) +
+  ggtitle("White: Dwelling")+
   geom_tile() +
   scale_fill_viridis_c(guide = "none") +
   theme_minimal() +
@@ -405,178 +792,279 @@ plot2 <- sample2 %>%
   ggplot(
     aes(x = start + duration / 2, width = duration, y = name, fill = d)
   ) +
+  ggtitle("Pink: Luna")+
   geom_tile() +
   scale_fill_viridis_c(guide = "none") +
   theme_minimal() +
   labs(x = "Time (s)", y = "") +
   theme(axis.text.y = element_text(size = 5))
 
-# 绘制两个图上下排列
-grid.arrange(plot1, plot2, ncol = 1)
+sample3 <- get_tidy_audio_analysis("65Pm8aWmD5lwItcT2MQi0s") %>%
+  compmus_align(bars, segments) %>%
+  select(bars) %>%
+  unnest(bars) %>%
+  mutate(
+    pitches = map(segments,
+                  compmus_summarise, pitches,
+                  method = "mean", norm = "manhattan")
+  )
+
+plot3 <- sample3 %>%
+  compmus_match_pitch_template(
+    chord_templates,         # Change to chord_templates if described
+    method = "euclidean",  # Try different distance metrics
+    norm = "manhattan"     # Try different norms
+  ) %>%
+  ggplot(
+    aes(x = start + duration / 2, width = duration, y = name, fill = d)
+  ) +
+  ggtitle("Black: Descending")+
+  geom_tile() +
+  scale_fill_viridis_c(guide = "none") +
+  theme_minimal() +
+  labs(x = "Time (s)", y = "") +
+  theme(axis.text.y = element_text(size = 5))
+
+sample4 <- get_tidy_audio_analysis("5jqJW9tITDRc7gyJLxzTL8") %>%
+  compmus_align(bars, segments) %>%
+  select(bars) %>%
+  unnest(bars) %>%
+  mutate(
+    pitches = map(segments,
+                  compmus_summarise, pitches,
+                  method = "mean", norm = "manhattan")
+  )
+
+plot4<- sample4 %>%
+  compmus_match_pitch_template(
+    chord_templates,         # Change to chord_templates if described
+    method = "euclidean",  # Try different distance metrics
+    norm = "manhattan"     # Try different norms
+  ) %>%
+  ggplot(
+    aes(x = start + duration / 2, width = duration, y = name, fill = d)
+  ) +
+  ggtitle("Blue: Soave")+
+  geom_tile() +
+  scale_fill_viridis_c(guide = "none") +
+  theme_minimal() +
+  labs(x = "Time (s)", y = "") +
+  theme(axis.text.y = element_text(size = 5))
+
+
+grid.arrange(plot1, plot2, plot3, plot4, nrow = 2, ncol = 2)
 
 ```
 
 ***
-In the chordograms I've compared two songs from the white and pink categories. The first one have a stable pattern where different chords appears at the same time. The second songs shows more variety and circular changes in chord progression. 
+I generated the chordograms for one of the most representative song track in each playlist. I applied euclidean distance metrics and manhattan norm. In the chordograms, there are more variations in the pink playlist. I displayed the one from the track [Luna](https://open.spotify.com/track/5HyHcVDIdda1M2SsAPVszp?si=b07f9d2894554b81), where there is a repeat pattern of slight shifting downwards and shifting back in chords. In [Soave](https://open.spotify.com/track/5jqJW9tITDRc7gyJLxzTL8?si=9134454be77848b5) from the blue playlist there are also some variation in the middle that deviate from the  main chord. The black ([Descending](https://open.spotify.com/track/65Pm8aWmD5lwItcT2MQi0s?si=fdad78a16e634b9e)) and white ([Dwelling](https://open.spotify.com/track/0aNMDYhIWGr0f5yjP6QkUk?si=a8dde56ef70342ec)) playlist have a relatively more stable chord pattern that is consistent throughout the track. 
 
+Tempo {.storyboard}
+======================
 
-### Self Similarity Matrices
+### Tempo histgram
+
+```{r,echo = FALSE}
+library(ggplot2)
+library(gridExtra)
+
+# Read playlist data from CSV file
+playlist_data <- read.csv("spotify_playlist_features.csv", header = TRUE)
+color_palette <- c("pink", "blue","black", "lightgrey")
+# Function to plot tempo histogram for a playlist
+plot_playlist_tempo_histogram <- function(playlist_name, playlist_data, xlim_range) {
+  # Extract tempo values for the specified playlist name
+  tempo_values <- playlist_data$tempo[playlist_data$playlist_name == playlist_name]
+  
+  # Create histogram with fixed x-axis range
+  ggplot(data.frame(tempo = tempo_values), aes(x = tempo, fill = playlist_name)) +
+    geom_histogram(binwidth = 5, fill = color_palette[playlist_name == unique(playlist_data$playlist_name)]) +
+    labs(title = playlist_name,
+         x = "Tempo (BPM)", y = "Frequency") +
+    xlim(xlim_range)
+}
+
+# Get maximum and minimum tempo values across all playlists
+max_tempo <- max(playlist_data$tempo)
+min_tempo <- min(playlist_data$tempo)
+
+# Define the common x-axis range
+xlim_range <- c(min_tempo, max_tempo)
+
+# Create empty list to store histograms
+histograms <- list()
+
+# Plot tempo histograms for each unique playlist name
+unique_playlists <- unique(playlist_data$playlist_name)
+for (playlist_name in unique_playlists) {
+  histograms[[playlist_name]] <- plot_playlist_tempo_histogram(playlist_name, playlist_data, xlim_range)
+}
+
+# Arrange histograms on one page
+grid.arrange(grobs = histograms, nrow = 2, ncol = 2)
+
+```
+
+***
+The tempo histograms reveal that the tempo across all four corpora tends to center around 120 bpm. However, the distribution of the tempo in the blue playlist appears to be more scattered compared to the others, indicating a greater variability in tempo within that playlist. In contrast, the pink and white playlist shows a very concentrated tempo distribution centered at around 125 bpm. As the corpus also included a few intro and outro tracks, it can explain the outliers with a tempo at around 100.
+
+### tempogram
 
 ```{r, echo = FALSE, message = FALSE, bg = 'transparent', fig.width=10, fig.height=6}
 library(tidyverse)
 library(spotifyr)
 library(compmus)
-# Function to create self similarity matrix plot
-create_similarity_plot <- function(track_id, title) {
-  # Load audio analysis data
-  audio_data <- get_tidy_audio_analysis(track_id) %>%
-    compmus_align(bars, segments) %>%
-    select(bars) %>%
-    unnest(bars) %>%
-    mutate(
-      pitches = map(segments,
-                     compmus_summarise, pitches,
-                     method = "acentre", norm = "manhattan"),
-      timbre = map(segments,
-                   compmus_summarise, timbre,
-                   method = "mean")
-    )
-
-  # Create self similarity matrices for Chroma and Timbre
-  chroma_matrix <- audio_data %>%
-    compmus_self_similarity(pitches, "aitchison") %>%
-    mutate(d = d / max(d), type = "Chroma")
-
-  timbre_matrix <- audio_data %>%
-    compmus_self_similarity(timbre, "cosine") %>%
-    mutate(d = d / max(d), type = "Timbre")
-
-  # Plot self similarity matrices
-  plot_chroma <- ggplot(
-      chroma_matrix,
-      aes(
-        x = xstart + xduration / 2,
-        width = xduration,
-        y = ystart + yduration / 2,
-        height = yduration,
-        fill = d
-      )
-    ) +
-    geom_tile() +
-    coord_fixed() +
-    scale_fill_viridis_c(guide = "none") +
-    theme_classic() +
-    theme(
-      panel.background = element_rect(fill = "transparent", color = NA),
-      plot.background = element_rect(fill = "transparent", color = NA)
-    ) +
-    labs(x = "", y = "") +
-    ggtitle(paste0("Chroma Self Similarity Matrix - ", title))
-
-  plot_timbre <- ggplot(
-      timbre_matrix,
-      aes(
-        x = xstart + xduration / 2,
-        width = xduration,
-        y = ystart + yduration / 2,
-        height = yduration,
-        fill = d
-      )
-    ) +
-    geom_tile() +
-    coord_fixed() +
-    scale_fill_viridis_c(guide = "none") +
-    theme_classic() +
-    theme(
-      panel.background = element_rect(fill = "transparent", color = NA),
-      plot.background = element_rect(fill = "transparent", color = NA)
-    ) +
-    labs(x = "", y = "") +
-    ggtitle(paste0("Timbre Self Similarity Matrix - ", title))
-
-  # Return list of plots
-  list(plot_chroma, plot_timbre)
-}
-
-# Track IDs and titles
-tracks <- list(
-  c("6fr1g7TqyLtZC3WqSKovcb", "Blue"),
-  c("7kfAbcKnRajKOmuACF3dxl", "Black")
-)
-theme_set(theme(panel.background = element_rect(fill = "transparent")))
-
-# Create plots for each track
-plots <- lapply(tracks, function(track) {
-  create_similarity_plot(track[1], track[2])
-})
-
-# Display plots in a grid layout
-library(gridExtra)
-
-
-grid.arrange(plots[[1]][[1]], plots[[1]][[2]], plots[[2]][[1]], plots[[2]][[2]], 
-             ncol = 2, nrow = 2)
-
 ```
-
-***
-I've compared two songs from the blue and black categories by analyzing their self-similarity matrices. The first song displays greater overall similarity in melodies and timbre. It shows a clearer structure with distinct segments throughout the track. Notably, the chroma and timbre graphs have similar patterns, indicating that changes in harmony and timbre often occur simultaneously. Conversely, the second song contains smaller segments, making it more challenging to distinguish between them. Additionally, the chroma and timbre matrices depict different patterns, suggesting there are different ways to divide the music from different aspects.It is worth noted that the pattern shows here does not represent the whole category.
-
-### Valence-Energy graph
-
 
 ```{r}
 library(gridExtra)
-library(ggplot2)
-theme_set(theme(panel.background = element_rect(fill = "transparent")))
-# 创建四个ggplot对象
-pink_plot <- ggplot(pink, aes(x = valence, y = energy)) +
-  geom_point() + geom_smooth() +
-  coord_cartesian(xlim = c(0,0.8), ylim = c(0, 1)) +
-  ggtitle("Pink") +
-  theme(plot.title = element_text(hjust = 0.5))
-black_plot <- ggplot(black, aes(x = valence, y = energy)) +
-  geom_jitter() + geom_smooth() +
-  coord_cartesian(xlim = c(0,0.8), ylim = c(0, 1)) +
-  ggtitle("Black") +
-  theme(plot.title = element_text(hjust = 0.5))
 
-blue_plot <- ggplot(blue, aes(x = valence, y = energy)) +
-  geom_jitter() + geom_smooth() +
-  coord_cartesian(xlim = c(0,0.8), ylim = c(0, 1)) +
-  ggtitle("Blue") +
-  theme(plot.title = element_text(hjust = 0.5))
+blue <- get_tidy_audio_analysis("0JxYzv0KXh2XuC9EVANl9a")
+blue_plot <- blue |>
+  tempogram(window_size = 8, hop_size = 5, cyclic = TRUE) |>
+  ggplot(aes(x = time, y = bpm, fill = power)) +
+  ggtitle("blue") +
+  geom_raster() +
+  scale_fill_viridis_c(guide = "none") +
+  labs(x = "Time (s)", y = "Tempo (BPM)") +
+  theme_classic()
 
-white_plot <- ggplot(white, aes(x = valence, y = energy)) +
-  geom_jitter() + geom_smooth() +
-  coord_cartesian(xlim = c(0,0.8), ylim = c(0, 1)) +
-  ggtitle("White") +
-  theme(plot.title = element_text(hjust = 0.5))
+pink <- get_tidy_audio_analysis("0RG0F3JOQY6bQeXkXqTfCo")
+pink_plot <- pink |>
+  tempogram(window_size = 8, hop_size = 5, cyclic = TRUE) |>
+  ggplot(aes(x = time, y = bpm, fill = power)) +
+  ggtitle("pink") +
+  geom_raster() +
+  scale_fill_viridis_c(guide = "none") +
+  labs(x = "Time (s)", y = "Tempo (BPM)") +
+  theme_classic()
 
-# 将ggplot对象转换为grob对象
-pink_grob <- ggplotGrob(pink_plot)
-black_grob <- ggplotGrob(black_plot)
-blue_grob <- ggplotGrob(blue_plot)
-white_grob <- ggplotGrob(white_plot)
+black <- get_tidy_audio_analysis("49gZg2qvjLBEmwRVMKNSmj")
+black_plot <- black |>
+  tempogram(window_size = 8, hop_size = 5, cyclic = TRUE) |>
+  ggplot(aes(x = time, y = bpm, fill = power)) +
+  ggtitle("black") +
+  geom_raster() +
+  scale_fill_viridis_c(guide = "none") +
+  labs(x = "Time (s)", y = "Tempo (BPM)") +
+  theme_classic()
 
-# 将图形以四宫格的方式排列
-grid.arrange(pink_grob, black_grob, blue_grob, white_grob, ncol = 2, nrow = 2,widths = c(0.5, 0.5), heights = c(0.5, 0.5))
+white <- get_tidy_audio_analysis("1ZTDB5eXH3V6bV6ZotZGOe")
+white_plot <- white |>
+  tempogram(window_size = 8, hop_size = 5, cyclic = TRUE) |>
+  ggplot(aes(x = time, y = bpm, fill = power)) +
+  ggtitle("white") +
+  geom_raster() +
+  scale_fill_viridis_c(guide = "none") +
+  labs(x = "Time (s)", y = "Tempo (BPM)") +
+  theme_classic()
 
+grid.arrange(
+  ggplotGrob(blue_plot),
+  ggplotGrob(pink_plot),
+  ggplotGrob(black_plot),
+  ggplotGrob(white_plot),
+  nrow = 2, ncol = 2
+)
+```
+
+***
+I generated the tempogram for one song from each playlist. In the blue playlist there are a lot more variations in tempo compared to the other playlist. I plot the tempo graph for the song [The Sea Breathe](https://open.spotify.com/track/0JxYzv0KXh2XuC9EVANl9a?si=66e26d66d6bd4260). It shows an average slow tempo with a fade in and a fade out. The tempo depicted on the tempogram s not very ascertained because there are no drum beats in this track. For the pink playlist I created the tempogram for [Ofrenda - Alfred Czital Remix](https://open.spotify.com/track/0RG0F3JOQY6bQeXkXqTfCo?si=50e4500438cf41f1), it has a much higher tempo at around 135, and the tempo is very clear and consistent. With black playlist ([Court of light](https://open.spotify.com/track/49gZg2qvjLBEmwRVMKNSmj?si=8bd99f1d6d3f4bd2)) and white play list ([Transparent creatures](https://open.spotify.com/track/1ZTDB5eXH3V6bV6ZotZGOe?si=1a038975eed045b6)) it shows a similar pattern with an average tempo around 125.
+
+Classification {.storyboard}
+======================
+
+### K-Nearest Neighbors (KNN) classifier 
+
+```{r}
+music_recipe <- 
+  recipe(
+    playlist ~
+      danceability +
+      energy +
+      loudness +
+      speechiness +
+      acousticness +
+      instrumentalness +
+      liveness +
+      valence +
+      tempo +
+      mode + 
+      key +
+      duration +
+      C + `C#|Db` + D + `D#|Eb` +
+      E + `F` + `F#|Gb` + G +
+      `G#|Ab` + A + `A#|Bb` + B +
+      c01 + c02 + c03 + c04 + c05 + c06 +
+      c07 + c08 + c09 + c10 + c11 + c12,
+    data = music_features
+  ) %>%
+  step_center(all_predictors()) %>%# Converts to z-scores.
+  step_scale(all_predictors())# Sets range to [0, 1].
+```
+
+```{r}
+music_cv <- music_features |> vfold_cv(5)
 ```
 
 
+```{r}
+knn_model <-
+  nearest_neighbor(neighbors = 1) |>
+  set_mode("classification") |> 
+  set_engine("kknn")
+music_knn <- 
+  workflow() |> 
+  add_recipe(music_recipe) |> 
+  add_model(knn_model) |> 
+  fit_resamples(music_cv, control = control_resamples(save_pred = TRUE))
+```
+
+```{r}
+music_knn |> get_conf_mat() |> autoplot(type = "heatmap")
+```
+
+```{r,echo = FALSE,results='hide'}
+# Calculate accuracy
+accuracy <- music_knn %>%
+  collect_predictions() %>%
+  metrics(truth = playlist, estimate = .pred_class) %>%
+  filter(.metric == "accuracy") %>%
+  pull(.estimate)
+
+```
 ***
-From this graph we can see that the pink category has a combination of sounds with high energy and low valence, or high valence with relatively low energy. The black category has high energy, with valence spread out the scale, but mainly at a low level. The blue category has medium - high energy with medium valence. The white category has medium energy and low valence.
+I applied a K-Nearest Neighbors (KNN) classifier to distinguish the four playlists with different music album color. From the result we can see that the classifier is relatively more effective at identifying music in a white color album, and it has very low performance when identifying blue album. However the overall accuracy is only 20%, which means the probability of accurate prediction is lower than chance. It implies that either there is no clear difference in music with different color albums, or the differences can't be identified from spotify api features.
 
 
-### Introduction page
+### CART Decision Tree 
 
-The corpus I selected is a pool of music tracks i used for DJ sets previously, mainly include deep/ambient techno music. My main interest is to explore the relationship between the design and color themes of the music album covers and the content of the music itself. I chose this topic because I believe that the organic character of this music genre and inspiration from nature would often evoke particular imagery or emotions, which is tightly linked with colors. Additionally a few of the artists are also visual artists, so their album cover designs should strongly align with the music content. I hypothesize that bright and clear color themes on album covers would correspond to brighter music, while darker and more ambiguous cover themes may align with deeper and lower-frequency music. 
+![](images/decision_tree.png){width=800 height=650}
 
-I categorized the music tracks in four categories :  black, white, blue and pink,  with 30 tracks in each category. One of the typical examples from the selected soundtracks include the 2022 album "Bloom" and the 2023 album "Groundwork." One album features cover art primarily composed of highly saturated paintings, while the other consists of a purely black abstract geometric design. These two albums also exhibit significant differences in listening experience.
+***
 
+By using CART Decision tree for classification task, the accuracy raised to 37.5%.![](images/cart.png){width=275 height=275}This classifier is very good at identify black playlists. The most important features identified by the classifier are: mode_key, energy, valence and tempo. However since the sample size is very small, the classifier might be over fitting the sample data instead of detecting the general pattern to identify color from audio features.
 
-![Alt Text 1](images/black.png){width=275 height=150} ![Alt Text 2](images/blue.png){width=275 height=150} ![Alt Text 3](images/pink.png){width=275 height=150} ![Alt Text 4](images/white.png){width=275 height=150}
+Conclusion
+======================
 
+**1. Brighter hues, brighter melodies** 
 
+Overall, this study explored the relation in musical features and album cover color in the genre of ambient techno. The music with a pink album cover shows higher valence level and loudness, while blue color songs shows low valence but higher energy level. Black and white color music have higher dancebility compare to the lighter color album.
+
+**2. Color and musical structures** 
+
+The self similarity matrices show that the pink color music have a clearer sturcture in the change of timbre and chroma, while the black and white color music have more rapid change and smaller musical segments. The blue album music have different type of musical structure in different tracks.  
+
+**3. Color and variations**
+
+By delving deeper into the key and tempo of the music. We can see that pink and blue album cover music shows more variations in audio features compare to the albums with black and white cover. The blue playlist shows more variation in tempo, and the pink playlist shows more variation in key and chords. 
+
+**4. Can the "Mindless Machine" tell the color of music?**
+
+Unfortunately, the two types of classifier I applied all can't achieve high accuracy in predicting the album cover color from the music features, which means it is hard to identify the differences in color from quantifiable features. Additionally, the selection of colors for music album covers is subjective, as individuals associate colors with music in their own unique ways. This is also influenced by their social and cultural background. Therefore, the low accuracy of mathematical models was expected.
+
+**5. Limitation and next step**
+
+Although this study discovered various patterns in music with different album cover color, the sample size and genre specificity may restrict the generalization of findings to broader populations. Additionally, I was not successful in translating abstract concepts into quantifiable music features. For the next step, I should focus more on understanding the psychological mechanisms underlying color-music associations and develop more robust models to exploring the intricate relationship between color and music.
 
